@@ -18,13 +18,15 @@ fn main() {
     // `block_on()` is basically scuffed `await`, since main can't be `async`
     let mut state = block_on(State::new(&window));
 
+    let mut data = (0.1, 0.2, 0.3);
+
     // TODO Don't know what the fk clojures are RIP
     event_loop.run(move |event, _, control_flow| {
         // Listen to window close event to exit if window close is pressed?
         match event {
             Event::RedrawRequested(_) => {
                 state.update();
-                match state.render() {
+                match state.render(data) {
                     Ok(_) => {}
                     // Recreate swap chain if lost
                     // TODO how does the `SwapChain` even get "Lost"?
@@ -32,7 +34,9 @@ fn main() {
                     // If system ran out of memory, only option is to exit program
                     Err(wgpu::SwapChainError::OutOfMemory) => *control_flow = ControlFlow::Exit,
                     // Otherwise print error
-                    Err(e) => {println!("SwapChainError: {:?}", e)}
+                    Err(e) => {
+                        println!("SwapChainError: {:?}", e)
+                    }
                 }
             }
             Event::MainEventsCleared => {
@@ -52,6 +56,10 @@ fn main() {
                         WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                         // In the case that we have an input event
                         // `KeyboardInput` is a struct, so we have to use the struct matching syntax (remember `..` is syntax for autofill)
+                        WindowEvent::CursorMoved { position, .. } => {
+                            data.0 = position.x % 2.0;
+                            data.1 = position.y % 2.0;
+                        }
                         WindowEvent::KeyboardInput { input, .. } => {
                             // Match the attributes of the keypress
 
@@ -181,7 +189,7 @@ impl State {
     // Nothing to update / "tick" for now
     fn update(&mut self) {}
     // Basically wgpu
-    fn render(&mut self) -> Result<(), wgpu::SwapChainError> {
+    fn render(&mut self, data: (f64, f64, f64)) -> Result<(), wgpu::SwapChainError> {
         // We need to get a frame to render to at first
         // Includes `wgpu::Texture` and `wgpu::Textureview` that holds the image that is being drawn
         // Remember the `?` operator here means return `Some(thing)` or return `Error`
@@ -197,15 +205,23 @@ impl State {
         // You can also use `drop(render_pass)`
         {
             // Create a render pass using the encoder
+            // `RenderPassDescriptor` only has two fields, `color_attachments` and `depth_stencil_attachment`
             let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                // Describe where the color is going to be drawn to
                 color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                    // Informs the texture to which the colors are going to be saved to
+                    // Specifying the `frame.view` that we made earlier means we're drawing to the screen
                     attachment: &frame.view,
+                    // The texture that will receive the resolved output, same as `attachment` unless multisampling (MSAA) is enabled
                     resolve_target: None,
+                    // What to do with colors on the screen?
                     ops: wgpu::Operations {
+                        // How to handle colors stored from the previous frame
+                        // Currently we're just clearing the colors
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
+                            r: data.0,
+                            g: data.1,
+                            b: data.2,
                             a: 1.0,
                         }),
                         store: true,
