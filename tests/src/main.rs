@@ -1,3 +1,5 @@
+use wgpu::BufferCopyViewBase;
+
 fn main() {
     let number = 12345;
 
@@ -10,10 +12,17 @@ fn main() {
         }
         _ => (),
     }
+    
+    let num = Boption::Some(123);
 }
 
 struct book<'a> {
     title: &'a str,
     content: &'a str,
     pages: u32
+}
+
+enum Boption<T> {
+    Some(T),
+    None
 }

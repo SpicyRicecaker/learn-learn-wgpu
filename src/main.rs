@@ -1,7 +1,8 @@
 // Winit allows us to make windows
 use futures::executor::block_on;
 use winit::{
-    event::{Event, WindowEvent},
+    // Import all event types
+    event::*,
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
@@ -20,14 +21,39 @@ fn main() {
     // TODO Don't know what the fk clojures are RIP
     event_loop.run(move |event, _, control_flow| {
         // Can't tell but maybe it's game loop stuff
-        *control_flow = ControlFlow::Wait;
+        // *control_flow = ControlFlow::Wait;
 
         // Listen to window close event to exit if window close is pressed?
         match event {
+            // In the case that a window event occurs, in which the window_id matches our current window id
             Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
+                ref event,
                 window_id,
-            } if window_id == window.id() => *control_flow = ControlFlow::Exit,
+            } if window_id == window.id() => match event {
+                // In the case that the event is a close request,
+                // Set the loop behavior (control flow) to exit
+                WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                // In the case that we have an input event
+                // `KeyboardInput` is a struct, so we have to use the struct matching syntax (remember `..` is syntax for autofill)
+                WindowEvent::KeyboardInput { input, .. } => {
+                    // Match the attributes of the keypress
+
+                    // Exit the program if the escape key is pressed
+                    match input {
+                        // Virtual keycode vs. scancode, use virtual when the semantic of the key is more important than the physical location of the key
+                        KeyboardInput {
+                            // `Element State` is pressed vs release
+                            state: ElementState::Pressed,
+                            // The virtual keycode of the keypress
+                            virtual_keycode: Some(VirtualKeyCode::Escape),
+                            ..
+                                // Exit program
+                        } => *control_flow = ControlFlow::Exit,
+                        _ => (),
+                    }
+                }
+                _ => (),
+            },
             _ => (),
         }
     });
