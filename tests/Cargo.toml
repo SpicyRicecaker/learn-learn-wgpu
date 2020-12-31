@@ -1,5 +1,5 @@
 [package]
-name = "bottle-water"
+name = "tests"
 version = "0.1.0"
 authors = ["SpicyRicecaker <awesomenessisgolden@gmail.com>"]
 edition = "2018"
@@ -7,9 +7,3 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# Native windows!
-winit = "0.24.0"
-# Vulkan rust wrapper!
-wgpu = "0.6.2"
-# Promises and stuff
-futures = "0.3.8"
