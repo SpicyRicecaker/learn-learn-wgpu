@@ -20,26 +20,43 @@ fn main() {
 
     // TODO Don't know what the fk clojures are RIP
     event_loop.run(move |event, _, control_flow| {
-        // Can't tell but maybe it's game loop stuff
-        // *control_flow = ControlFlow::Wait;
-
         // Listen to window close event to exit if window close is pressed?
         match event {
+            Event::RedrawRequested(_) => {
+                state.update();
+                match state.render() {
+                    Ok(_) => {}
+                    // Recreate swap chain if lost
+                    // TODO how does the `SwapChain` even get "Lost"?
+                    Err(wgpu::SwapChainError::Lost) => state.resize(state.size),
+                    // If system ran out of memory, only option is to exit program
+                    Err(wgpu::SwapChainError::OutOfMemory) => *control_flow = ControlFlow::Exit,
+                    // Otherwise print error
+                    Err(e) => {println!("SwapChainError: {:?}", e)}
+                }
+            }
+            Event::MainEventsCleared => {
+                // We must keep requesting redraws, else `RedrawRequested` event will only trigger once
+                window.request_redraw();
+            }
             // In the case that a window event occurs, in which the window_id matches our current window id
             Event::WindowEvent {
                 ref event,
                 window_id,
-            } if window_id == window.id() => match event {
-                // In the case that the event is a close request,
-                // Set the loop behavior (control flow) to exit
-                WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                // In the case that we have an input event
-                // `KeyboardInput` is a struct, so we have to use the struct matching syntax (remember `..` is syntax for autofill)
-                WindowEvent::KeyboardInput { input, .. } => {
-                    // Match the attributes of the keypress
+            } if window_id == window.id() => {
+                // Have the `state.input()` take precendence over the main loop
+                if !state.input(event) {
+                    match event {
+                        // In the case that the event is a close request,
+                        // Set the loop behavior (control flow) to exit
+                        WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                        // In the case that we have an input event
+                        // `KeyboardInput` is a struct, so we have to use the struct matching syntax (remember `..` is syntax for autofill)
+                        WindowEvent::KeyboardInput { input, .. } => {
+                            // Match the attributes of the keypress
 
-                    // Exit the program if the escape key is pressed
-                    match input {
+                            // Exit the program if the escape key is pressed
+                            match input {
                         // Virtual keycode vs. scancode, use virtual when the semantic of the key is more important than the physical location of the key
                         KeyboardInput {
                             // `Element State` is pressed vs release
@@ -51,9 +68,17 @@ fn main() {
                         } => *control_flow = ControlFlow::Exit,
                         _ => (),
                     }
+                        }
+                        // On resize event, call our implemented state function and pass in the new size
+                        WindowEvent::Resized(physical_size) => state.resize(*physical_size),
+                        // Scale factor changed could be changing display res, moving to new monitor, etc.
+                        WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                            state.resize(**new_inner_size);
+                        }
+                        _ => (),
+                    }
                 }
-                _ => (),
-            },
+            }
             _ => (),
         }
     });
@@ -144,18 +169,55 @@ impl State {
         // Update size with new size
         self.size = new_size;
         // Then update size of window in the swap chain descriptor
-        self.sc_desc.width = self.size.width;
-        self.sc_desc.height = self.size.height;
+        self.sc_desc.width = new_size.width;
+        self.sc_desc.height = new_size.height;
         // Then create a new swap chain based on the updated swap chain descriptor size
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
     }
+    // Checks if an event is fully complete, returns bool, if true, main won't process it any longer
     fn input(&mut self, event: &WindowEvent) -> bool {
-        todo!()
+        false
     }
-    fn update(&mut self) {
-        todo!()
-    }
+    // Nothing to update / "tick" for now
+    fn update(&mut self) {}
+    // Basically wgpu
     fn render(&mut self) -> Result<(), wgpu::SwapChainError> {
-        todo!()
+        // We need to get a frame to render to at first
+        // Includes `wgpu::Texture` and `wgpu::Textureview` that holds the image that is being drawn
+        // Remember the `?` operator here means return `Some(thing)` or return `Error`
+        let frame = self.swap_chain.get_current_frame()?.output;
+        // Recall that the `device` is responsible for creating commands to be sent to the `queue` of the GPU
+        // `Encoder` builds a buffer that can be sent to GPU
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+        // The outside `{}` means that the reference to the mutable borrow of `encoder` in `encoder.begin_render_pass()` is dropped after so we're allowed to call `encoder.finish()` after
+        // You can also use `drop(render_pass)`
+        {
+            // Create a render pass using the encoder
+            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                    attachment: &frame.view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: true,
+                    },
+                }],
+                // I think that depth has to do with the z-index of pixels, and stenciling can block pixels?
+                // Maybe important for 3D but useless for 2D
+                depth_stencil_attachment: None,
+            });
+        }
+        self.queue.submit(std::iter::once(encoder.finish()));
+
+        Ok(())
     }
 }

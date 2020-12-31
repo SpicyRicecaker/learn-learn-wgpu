@@ -1,5 +1,3 @@
-use wgpu::BufferCopyViewBase;
-
 fn main() {
     let number = 12345;
 
@@ -12,17 +10,29 @@ fn main() {
         }
         _ => (),
     }
+
+    let num = NumberChoice::One(12345);
+
+    match num {
+        NumberChoice::One(32) => {}
+        NumberChoice::Two(_) => {}
+        _ => (),
+    }
     
-    let num = Boption::Some(123);
+    let mut num = 2;
+    {
+        num = 123
+    }
+    println!("{}", num);
 }
 
 struct book<'a> {
     title: &'a str,
     content: &'a str,
-    pages: u32
+    pages: u32,
 }
 
-enum Boption<T> {
-    Some(T),
-    None
+enum NumberChoice {
+    One(u32),
+    Two(u32),
 }
