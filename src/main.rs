@@ -102,6 +102,7 @@ struct State {
     sc_desc: wgpu::SwapChainDescriptor,
     swap_chain: wgpu::SwapChain,
     size: winit::dpi::PhysicalSize<u32>,
+    render_pipeline: wgpu::RenderPipeline,
 }
 
 impl State {
@@ -161,6 +162,91 @@ impl State {
         };
         // Represents the image or series of images that will be drawn onto a `Surface`
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
+
+        // Load in the shaders from `shader.vert` and `shader.frag`
+        // `include_str!` reads `shader.vert` and stores as string
+        let vs_src = include_str!("shader.vert");
+        let fs_src = include_str!("shader.frag");
+        // Compiler compiles GLSL into SPIR-V modules
+        let mut compiler = shaderc::Compiler::new().unwrap();
+        // So compile both the vertex and fragment shader form GLSL into spirv
+        let vs_spirv = compiler
+            .compile_into_spirv(
+                vs_src,
+                shaderc::ShaderKind::Vertex,
+                "shader.vert",
+                "main",
+                None,
+            )
+            .unwrap();
+        let fs_spirv = compiler
+            .compile_into_spirv(
+                fs_src,
+                shaderc::ShaderKind::Fragment,
+                "shader.frag",
+                "main",
+                None,
+            )
+            .unwrap();
+
+        let vs_module =
+            device.create_shader_module(wgpu::util::make_spirv(&vs_spirv.as_binary_u8()));
+        let fs_module =
+            device.create_shader_module(wgpu::util::make_spirv(&fs_spirv.as_binary_u8()));
+
+        // Pipeline layout describes a pipeline
+        let render_pipeline_layout =
+            // `PipelineLayoutDescriptor` can be used to create a pipeline layout
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[],
+                push_constant_ranges: &[],
+            });
+
+        // Render pipline descriptor describes a render pipeline
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            // Label shows up in debuggin
+            label: Some("Render Pipeline"),
+            // TODO describes **bindings** for layout???
+            layout: Some(&render_pipeline_layout),
+            // `ProgrammableStageDescriptor` describes the stage of a rendering pipeline
+            vertex_stage: wgpu::ProgrammableStageDescriptor {
+                // Shader module is a compiled shader module on the gpu that defines the rendering stage
+                // In this case we're inputting the vertex shader
+                module: &vs_module,
+                entry_point: "main",
+            },
+            // Fragment shader technically optional, so surrounded with `Some`
+            fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
+                // In this case we're inputting the fragment shader
+                module: &fs_module,
+                entry_point: "main",
+            }),
+            // Rasterization process for the pipeline
+            // Describes how to process primitives before they are sent to the fragment shader
+            rasterization_state: Some(
+                // `RasterizationStateDescriptor` describes the state of rasterizer in render pipeline
+                // A rasterizer (aster for star, starshaped) basically turns a vector into pixels
+                wgpu::RasterizationStateDescriptor {
+                    // Counter clockwise or clockwise, depending on the coordinate system?
+                    // Vertices with counterclockwise order are considered the front face, used for right handed coordinate systems
+                    front_face: wgpu::FrontFace::Ccw,
+                    // Primitives that don't meet the criteria are culled, which is good because it speeds up rendering process for images that arent't seen anyway
+                    cull_mode: wgpu::CullMode::Back,
+                    depth_bias: 0,
+                    depth_bias_slope_scale: 0.0,
+                    depth_bias_clamp: 0.0,
+                    clamp_depth: false,
+                },
+            ),
+            color_states: &[wgpu::ColorStateDescriptor {
+                format: sc_desc.format,
+                color_blend: wgpu::BlendDescriptor::REPLACE,
+                alpha_blend: wgpu::BlendDescriptor::REPLACE,
+                write_mask: wgpu::ColorWrite::ALL,
+            }],
+        });
+
         // We can return the struct that can be built using all of our variables
         Self {
             surface,
