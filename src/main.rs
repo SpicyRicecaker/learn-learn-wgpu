@@ -239,12 +239,37 @@ impl State {
                     clamp_depth: false,
                 },
             ),
+            // Describes how colors are stored and processed throughout the render pipeline
             color_states: &[wgpu::ColorStateDescriptor {
+                // We put it to `swap_chain` format so it's easy to copy to it 
                 format: sc_desc.format,
+                // Just replace previous pixels 
                 color_blend: wgpu::BlendDescriptor::REPLACE,
+                // Apparently very complicated
                 alpha_blend: wgpu::BlendDescriptor::REPLACE,
+                // Enable writes to all color channels, rgba 
                 write_mask: wgpu::ColorWrite::ALL,
             }],
+            // Tell `wgpu` that we want to use a list of triangles for drawing
+            primitive_topology: wgpu::PrimitiveTopology::TriangleList,
+            
+            // *** Apparently this entire section is basically buffers so...
+            
+            // 
+            depth_stencil_state: None,
+            // 
+            vertex_state: wgpu::VertexStateDescriptor {
+                // Format of the index buffer to `u16`
+                index_format: wgpu::IndexFormat::Uint16,
+                // 
+                vertex_buffers: &[]
+            },
+            // Samples calculated per pixel, this is MSAA, 1 is none
+            sample_count: 1,
+            // Use all samples
+            sample_mask: !0,
+            // Anti-aliasing
+            alpha_to_coverage_enabled: false,
         });
 
         // We can return the struct that can be built using all of our variables
@@ -255,6 +280,7 @@ impl State {
             sc_desc,
             swap_chain,
             size,
+            render_pipeline
         }
     }
 
