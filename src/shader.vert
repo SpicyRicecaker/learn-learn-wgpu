@@ -18,11 +18,21 @@
 // Storing vertex data in the shader as positions is very ineffective, especially with big data sets, learn more abt `Buffer`s later
 
 // Declaration is type, variable name = type, values
-const vec2 positions[3] = vec2[3] (
-  vec2(0.0, 0.5),
-  vec2(-0.5, -0.5),
-  vec2(0.5, -0.5)
-);
+// const vec2 positions[3] = vec2[3] (
+//   vec2(0.0, 0.5),
+//   vec2(-0.5, -0.5),
+//   vec2(0.5, -0.5)
+// );
+
+// Get position data from vertex buffer
+// Position
+layout(location=0) in vec3 a_position;
+// Color
+layout(location=1) in vec3 a_color;
+
+// Literally just passthrough color to the shader.frag
+layout(location=0) out vec3 v_color;
+
 
 void main () {
   // `gl_Position` and `gl_VertexIndex` are "built-in" variables (existing beforehand) that say where the data is going to be
@@ -40,9 +50,20 @@ void main () {
   // or texture dimension
   // .s .t .p .q
   // You can even call it like `array.rgb`
+
+  // Return color for frag shader to deal with
+  v_color = a_color;
   
   // The way that the data types are setup makes it easy to do matrix operations on them 
-  gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
+  // gl_Position = vec4(a_position, 1.0);
+  // if(gl_VertexIndex == 2) {
+    gl_Position = vec4(a_position, 1.0);
+  // } else {
+    // gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
+  // }
+  // if(a_position.r == 0.1) 
+  // {
+  // }
 }
 
 // If statements can be very inefficient, as gpu cores are synced so they have to wait for this to evaluate

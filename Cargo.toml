@@ -13,6 +13,8 @@ winit = "0.24.0"
 wgpu = "0.6.2"
 # Promises and stuff
 futures = "0.3.8"
+# Casting plain data types
+bytemuck = { version = "1.4.1", features = ["derive"] }
 
 # Build dependencies are dependencies that we need at compile time, but don't need at run time
 [build-dependencies]

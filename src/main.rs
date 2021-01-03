@@ -1,5 +1,6 @@
 // Winit allows us to make windows
 use futures::executor::block_on;
+use wgpu::util::DeviceExt;
 use winit::{
     // Import all event types
     event::*,
@@ -120,6 +121,69 @@ impl Batch {
     }
 }
 
+// `bytemuck::Pod` means that out data is just "Plain Old Data"
+// `bytemuck::Zeroable` means that we can use `std::mem::zeroed()`
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Vertex {
+    position: [f32; 3],
+    color: [f32; 3],
+}
+
+// Gotta write traits manually if some fields ddon't implement these
+// unsafe impl bytemuck::Pod for Vertex {}
+// unsafe impl bytemuck::Zeroable for Vertex {}
+
+impl Vertex {
+    fn desc<'a>() -> wgpu::VertexBufferDescriptor<'a> {
+        wgpu::VertexBufferDescriptor {
+            // How wide a vertex is, in this case we can literally pass in the size of vertex
+            // `wgpu::BufferAddress` is internal type for buffer steps
+            stride: std::mem::size_of::<Vertex> as wgpu::BufferAddress,
+            // TODO How often the vertex buffer is stepped forward?
+            step_mode: wgpu::InputStepMode::Vertex,
+            // Basically the fields of a Vertex struct here
+            // We can use the macro provided below to make it less verbose
+            // Though it requires `'static` lifetime, which we can't return from a func
+            attributes: &[
+                // This describes vector position
+                wgpu::VertexAttributeDescriptor {
+                    offset: 0,
+                    // Where we should store this attribute, `layout(location=0)`
+                    shader_location: 0,
+                    // Format is same as defined in `Vertex`
+                    format: wgpu::VertexFormat::Float3,
+                },
+                // This describes vector color
+                wgpu::VertexAttributeDescriptor {
+                    // Offset by the vector position data as described above
+                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                    // Where we should store this attribute, `layout(location=1)`
+                    shader_location: 1,
+                    // Format is same as defined in `Vertex`
+                    format: wgpu::VertexFormat::Float3,
+                },
+            ],
+            // attributes: &wgpu::vertex_attr_array![0 => Float3, 1=> Float3],
+        }
+    }
+}
+
+const VERTICES: &[Vertex] = &[
+    Vertex {
+        position: [0.0, 0.5, 0.0],
+        color: [1.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [-0.5, -0.5, 0.0],
+        color: [0.0, 1.0, 0.0],
+    },
+    Vertex {
+        position: [0.5, -0.5, 0.0],
+        color: [0.0, 0.0, 1.0],
+    },
+];
+
 struct State {
     // Platform specific "surface" in which rendered images can be put
     surface: wgpu::Surface,
@@ -132,6 +196,8 @@ struct State {
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
     render_pipeline2: wgpu::RenderPipeline,
+    vertex_buffer: wgpu::Buffer,
+    num_vertices: u32,
 }
 
 impl State {
@@ -191,6 +257,15 @@ impl State {
         };
         // Represents the image or series of images that will be drawn onto a `Surface`
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
+
+        // `device.create_buffer_init()` comes from `use wgpu::util::DeviceExt;`
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("vertex Buffer"),
+            // Tries to cast `VERTICES` to `&[u8]`
+            contents: bytemuck::cast_slice(VERTICES),
+            // Usage of the buffer, in this case acting like a vertex buffer while drawing
+            usage: wgpu::BufferUsage::VERTEX,
+        });
 
         // `wgpu::include_spirv!` differs from `wgpu::util::make_spirv` in that it takes in file name vs. `&str`
         // So we can directly include our `.spv` files
@@ -264,8 +339,8 @@ impl State {
             vertex_state: wgpu::VertexStateDescriptor {
                 // Format of the index buffer to `u16`
                 index_format: wgpu::IndexFormat::Uint16,
-                //
-                vertex_buffers: &[],
+                // Specify the vertex buffer that we described in `impl Vertex`
+                vertex_buffers: &[Vertex::desc()],
             },
             // Anti aliasing stuff
             // Samples calculated per pixel, this is MSAA, 1 is no multisampling
@@ -333,7 +408,7 @@ impl State {
                 // Format of the index buffer to `u16`
                 index_format: wgpu::IndexFormat::Uint16,
                 //
-                vertex_buffers: &[],
+                vertex_buffers: &[Vertex::desc()],
             },
             // Anti aliasing stuff
             // Samples calculated per pixel, this is MSAA, 1 is no multisampling
@@ -344,6 +419,7 @@ impl State {
             alpha_to_coverage_enabled: false,
         });
 
+        let num_vertices = VERTICES.len() as u32;
 
         // We can return the struct that can be built using all of our variables
         Self {
@@ -354,8 +430,10 @@ impl State {
             swap_chain,
             size,
             render_pipeline,
+            vertex_buffer,
             // TROLL
-            render_pipeline2
+            render_pipeline2,
+            num_vertices,
         }
     }
 
@@ -407,9 +485,9 @@ impl State {
                         // Currently we're just clearing the colors
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             // Rgb based off of batch TROLL
-                            r: batch.cursor_position.0 % 4.0,
-                            g: batch.cursor_position.1 % 4.0,
-                            b: (batch.cursor_position.0 + batch.cursor_position.1) % 4.0,
+                            r: batch.cursor_position.0 % 1.0,
+                            g: batch.cursor_position.1 % 1.0,
+                            b: (batch.cursor_position.0 + batch.cursor_position.1) % 1.0,
                             a: 1.0,
                         }),
                         store: true,
@@ -426,8 +504,11 @@ impl State {
             } else {
                 render_pass.set_pipeline(&self.render_pipeline);
             }
-            // Draw triangle????
-            render_pass.draw(0..4, 0..2);
+            // Assign portion of vertex buffer to a slot
+            // calls to `draw` will then use this vertex buffer
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            // Draw based on the vertex buffer vertices obv
+            render_pass.draw(0..self.num_vertices, 0..1);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
 
