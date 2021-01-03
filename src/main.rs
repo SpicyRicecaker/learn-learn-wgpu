@@ -18,7 +18,7 @@ fn main() {
     // `block_on()` is basically scuffed `await`, since main can't be `async`
     let mut state = block_on(State::new(&window));
 
-    let mut data = (0.1, 0.2, 0.3);
+    let mut batch: Batch;
 
     // TODO Don't know what the fk clojures are RIP
     event_loop.run(move |event, _, control_flow| {
@@ -26,7 +26,7 @@ fn main() {
         match event {
             Event::RedrawRequested(_) => {
                 state.update();
-                match state.render(data) {
+                match state.render(batch) {
                     Ok(_) => {}
                     // Recreate swap chain if lost
                     // TODO how does the `SwapChain` even get "Lost"?
@@ -57,25 +57,37 @@ fn main() {
                         // In the case that we have an input event
                         // `KeyboardInput` is a struct, so we have to use the struct matching syntax (remember `..` is syntax for autofill)
                         WindowEvent::CursorMoved { position, .. } => {
-                            // data.0 = position.x % 2.0;
-                            // data.1 = position.y % 2.0;
+                            // Update batch
+                            batch.cursorPosition.0 = position.x;
+                            batch.cursorPosition.1 = position.y;
                         }
                         WindowEvent::KeyboardInput { input, .. } => {
                             // Match the attributes of the keypress
 
                             // Exit the program if the escape key is pressed
                             match input {
-                        // Virtual keycode vs. scancode, use virtual when the semantic of the key is more important than the physical location of the key
-                        KeyboardInput {
-                            // `Element State` is pressed vs release
-                            state: ElementState::Pressed,
-                            // The virtual keycode of the keypress
-                            virtual_keycode: Some(VirtualKeyCode::Escape),
-                            ..
-                                // Exit program
-                        } => *control_flow = ControlFlow::Exit,
-                        _ => (),
-                    }
+                                // Virtual keycode vs. scancode, use virtual when the semantic of the key is more important than the physical location of the key
+                                KeyboardInput {
+                                    // `Element State` is pressed vs release
+                                    state: ElementState::Pressed,
+                                    // The virtual keycode of the keypress
+                                    virtual_keycode,
+                                    ..
+                                } => {
+                                    match virtual_keycode {
+                                        // Exit program if escape is pressed
+                                        Some(VirtualKeyCode::Escape) => {
+                                            *control_flow = ControlFlow::Exit
+                                        }
+                                        // If spacebar is pressed update batch
+                                        Some(VirtualKeyCode::Space) => {
+                                            batch.spacePressed = !batch.spacePressed
+                                        }
+                                        _ => (),
+                                    }
+                                }
+                                _ => (),
+                            }
                         }
                         // On resize event, call our implemented state function and pass in the new size
                         WindowEvent::Resized(physical_size) => state.resize(*physical_size),
@@ -90,6 +102,22 @@ fn main() {
             _ => (),
         }
     });
+}
+
+struct Batch {
+    // 0 or 1
+    spacePressed: bool,
+    // Cursor position
+    cursorPosition: (f64, f64),
+}
+
+impl Batch {
+    fn new() -> Self {
+        Batch {
+            spacePressed: false,
+            cursorPosition: (0.0, 0.0),
+        }
+    }
 }
 
 struct State {
@@ -165,10 +193,8 @@ impl State {
 
         // `wgpu::include_spirv!` differs from `wgpu::util::make_spirv` in that it takes in file name vs. `&str`
         // So we can directly include our `.spv` files
-        let vs_module =
-            device.create_shader_module(wgpu::include_spirv!("shader.vert.spv"));
-        let fs_module =
-            device.create_shader_module(wgpu::include_spirv!("shader.frag.spv"));
+        let vs_module = device.create_shader_module(wgpu::include_spirv!("shader.vert.spv"));
+        let fs_module = device.create_shader_module(wgpu::include_spirv!("shader.frag.spv"));
 
         // Pipeline layout describes a pipeline
         let render_pipeline_layout =
@@ -217,26 +243,26 @@ impl State {
             ),
             // Describes how colors are stored and processed throughout the render pipeline
             color_states: &[wgpu::ColorStateDescriptor {
-                // We put it to `swap_chain` format so it's easy to copy to it 
+                // We put it to `swap_chain` format so it's easy to copy to it
                 format: sc_desc.format,
-                // Just replace previous pixels 
+                // Just replace previous pixels
                 color_blend: wgpu::BlendDescriptor::REPLACE,
                 // Apparently very complicated
                 alpha_blend: wgpu::BlendDescriptor::REPLACE,
-                // Enable writes to all color channels, rgba 
+                // Enable writes to all color channels, rgba
                 write_mask: wgpu::ColorWrite::ALL,
             }],
             // Tell `wgpu` that we want to use a list of triangles for drawing
             primitive_topology: wgpu::PrimitiveTopology::TriangleList,
-            
+
             // *** Apparently this entire section is basically buffers so...
             depth_stencil_state: None,
-            // 
+            //
             vertex_state: wgpu::VertexStateDescriptor {
                 // Format of the index buffer to `u16`
                 index_format: wgpu::IndexFormat::Uint16,
-                // 
-                vertex_buffers: &[]
+                //
+                vertex_buffers: &[],
             },
             // Anti aliasing stuff
             // Samples calculated per pixel, this is MSAA, 1 is no multisampling
@@ -255,7 +281,9 @@ impl State {
             sc_desc,
             swap_chain,
             size,
-            render_pipeline
+            render_pipeline,
+            // TROLL
+            render_pipeline2
         }
     }
 
@@ -276,7 +304,7 @@ impl State {
     // Nothing to update / "tick" for now
     fn update(&mut self) {}
     // Basically wgpu
-    fn render(&mut self, data: (f64, f64, f64)) -> Result<(), wgpu::SwapChainError> {
+    fn render(&mut self, batch: Batch) -> Result<(), wgpu::SwapChainError> {
         // We need to get a frame to render to at first
         // Includes `wgpu::Texture` and `wgpu::Textureview` that holds the image that is being drawn
         // Remember the `?` operator here means return `Some(thing)` or return `Error`
@@ -306,9 +334,10 @@ impl State {
                         // How to handle colors stored from the previous frame
                         // Currently we're just clearing the colors
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: data.0,
-                            g: data.1,
-                            b: data.2,
+                            // Rgb based off of batch TROLL
+                            r: batch.cursorPosition.0,
+                            g: batch.cursorPosition.1,
+                            b: (batch.cursorPosition.0 + batch.cursorPosition.1) / 2.0,
                             a: 1.0,
                         }),
                         store: true,
@@ -318,10 +347,10 @@ impl State {
                 // Maybe important for 3D but useless for 2D
                 depth_stencil_attachment: None,
             });
-            
+
             // Set render pipeline to the pipeline that we defined in `state`
             render_pass.set_pipeline(&self.render_pipeline);
-            // Draw triangle????    
+            // Draw triangle????
             render_pass.draw(0..4, 0..2);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
