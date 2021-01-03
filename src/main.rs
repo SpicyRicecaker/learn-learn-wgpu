@@ -226,22 +226,24 @@ impl State {
                 // Enable writes to all color channels, rgba 
                 write_mask: wgpu::ColorWrite::ALL,
             }],
-            // Use list of triangles for drawing
+            // Tell `wgpu` that we want to use a list of triangles for drawing
             primitive_topology: wgpu::PrimitiveTopology::TriangleList,
-            // 
+            
+            // *** Apparently this entire section is basically buffers so...
             depth_stencil_state: None,
             // 
             vertex_state: wgpu::VertexStateDescriptor {
-                // 
+                // Format of the index buffer to `u16`
                 index_format: wgpu::IndexFormat::Uint16,
                 // 
                 vertex_buffers: &[]
             },
-            // Determines the amount of samples for MSAA, 1 is no multisampling
-            sample_count: 1,
-            // Use all samples in sample count
-            sample_mask: !0,
             // Anti aliasing stuff
+            // Samples calculated per pixel, this is MSAA, 1 is no multisampling
+            sample_count: 1,
+            // Use all samples in `sample_count` above
+            sample_mask: !0,
+            // Anti-aliasing
             alpha_to_coverage_enabled: false,
         });
 
