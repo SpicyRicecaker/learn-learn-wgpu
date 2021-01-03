@@ -13,5 +13,14 @@ winit = "0.24.0"
 wgpu = "0.6.2"
 # Promises and stuff
 futures = "0.3.8"
-# 
+
+# Build dependencies are dependencies that we need at compile time, but don't need at run time
+[build-dependencies]
+# We can use shaderc to compile our shader files into `SPIR-V` at compile time
 shaderc = "0.7"
+# Make error handling more idiomatic
+anyhow = "1.0.37"
+# Recursively move items around?
+fs_extra = "1.2.0"
+# You know, wildcard patterns and stuff
+glob = "0.3.0"

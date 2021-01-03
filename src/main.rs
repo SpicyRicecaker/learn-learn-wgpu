@@ -57,8 +57,8 @@ fn main() {
                         // In the case that we have an input event
                         // `KeyboardInput` is a struct, so we have to use the struct matching syntax (remember `..` is syntax for autofill)
                         WindowEvent::CursorMoved { position, .. } => {
-                            data.0 = position.x % 2.0;
-                            data.1 = position.y % 2.0;
+                            // data.0 = position.x % 2.0;
+                            // data.1 = position.y % 2.0;
                         }
                         WindowEvent::KeyboardInput { input, .. } => {
                             // Match the attributes of the keypress
@@ -163,36 +163,12 @@ impl State {
         // Represents the image or series of images that will be drawn onto a `Surface`
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
-        // Load in the shaders from `shader.vert` and `shader.frag`
-        // `include_str!` reads `shader.vert` and stores as string
-        let vs_src = include_str!("shader.vert");
-        let fs_src = include_str!("shader.frag");
-        // Compiler compiles GLSL into SPIR-V modules
-        let mut compiler = shaderc::Compiler::new().unwrap();
-        // So compile both the vertex and fragment shader form GLSL into spirv
-        let vs_spirv = compiler
-            .compile_into_spirv(
-                vs_src,
-                shaderc::ShaderKind::Vertex,
-                "shader.vert",
-                "main",
-                None,
-            )
-            .unwrap();
-        let fs_spirv = compiler
-            .compile_into_spirv(
-                fs_src,
-                shaderc::ShaderKind::Fragment,
-                "shader.frag",
-                "main",
-                None,
-            )
-            .unwrap();
-
+        // `wgpu::include_spirv!` differs from `wgpu::util::make_spirv` in that it takes in file name vs. `&str`
+        // So we can directly include our `.spv` files
         let vs_module =
-            device.create_shader_module(wgpu::util::make_spirv(&vs_spirv.as_binary_u8()));
+            device.create_shader_module(wgpu::include_spirv!("shader.vert.spv"));
         let fs_module =
-            device.create_shader_module(wgpu::util::make_spirv(&fs_spirv.as_binary_u8()));
+            device.create_shader_module(wgpu::include_spirv!("shader.frag.spv"));
 
         // Pipeline layout describes a pipeline
         let render_pipeline_layout =
@@ -239,12 +215,34 @@ impl State {
                     clamp_depth: false,
                 },
             ),
+            // Describes how colors are stored and processed throughout the render pipeline
             color_states: &[wgpu::ColorStateDescriptor {
+                // We put it to `swap_chain` format so it's easy to copy to it 
                 format: sc_desc.format,
+                // Just replace previous pixels 
                 color_blend: wgpu::BlendDescriptor::REPLACE,
+                // Apparently very complicated
                 alpha_blend: wgpu::BlendDescriptor::REPLACE,
+                // Enable writes to all color channels, rgba 
                 write_mask: wgpu::ColorWrite::ALL,
             }],
+            // Use list of triangles for drawing
+            primitive_topology: wgpu::PrimitiveTopology::TriangleList,
+            // 
+            depth_stencil_state: None,
+            // 
+            vertex_state: wgpu::VertexStateDescriptor {
+                // 
+                index_format: wgpu::IndexFormat::Uint16,
+                // 
+                vertex_buffers: &[]
+            },
+            // Determines the amount of samples for MSAA, 1 is no multisampling
+            sample_count: 1,
+            // Use all samples in sample count
+            sample_mask: !0,
+            // Anti aliasing stuff
+            alpha_to_coverage_enabled: false,
         });
 
         // We can return the struct that can be built using all of our variables
@@ -255,6 +253,7 @@ impl State {
             sc_desc,
             swap_chain,
             size,
+            render_pipeline
         }
     }
 
@@ -292,7 +291,7 @@ impl State {
         {
             // Create a render pass using the encoder
             // `RenderPassDescriptor` only has two fields, `color_attachments` and `depth_stencil_attachment`
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 // Describe where the color is going to be drawn to
                 color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
                     // Informs the texture to which the colors are going to be saved to
@@ -317,6 +316,11 @@ impl State {
                 // Maybe important for 3D but useless for 2D
                 depth_stencil_attachment: None,
             });
+            
+            // Set render pipeline to the pipeline that we defined in `state`
+            render_pass.set_pipeline(&self.render_pipeline);
+            // Draw triangle????    
+            render_pass.draw(0..4, 0..2);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
 
