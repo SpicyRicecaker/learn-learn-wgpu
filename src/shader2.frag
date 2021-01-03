@@ -10,7 +10,8 @@
 // `layout` specifies where `f_color` will be saved to 
 // `location=0` is current texture of the swapchain, which is the screen
 layout(location=0) out vec4 f_color;
+layout(location=1) in vec4 triangle;
 
 void main() {
-  f_color = vec4(0.3, 0.2, 0.1, 1.0);
+  f_color = vec4(triangle.r, triangle.g, triangle.b, triangle.a);
 }

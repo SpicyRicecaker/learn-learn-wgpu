@@ -1,32 +1,14 @@
 fn main() {
-    let number = 12345;
+    let bookDescriptor = BookDescriptor { title: "123", content: "123", pages: 123 };
 
-    match number {
-        123123 => {
-            println!("no")
-        }
-        2 => {
-            println!("yess")
-        }
-        _ => (),
-    }
-
-    let num = NumberChoice::One(12345);
-
-    match num {
-        NumberChoice::One(32) => {}
-        NumberChoice::Two(_) => {}
-        _ => (),
-    }
-    
-    let mut num = 2;
-    {
-        num = 123
-    }
-    println!("{}", num);
+    // let book = Book{&bookDescriptor};
 }
 
-struct book<'a> {
+struct Book<'a> {
+    bookDescriptor: &'a BookDescriptor
+}
+
+struct BookDescriptor<'a> {
     title: &'a str,
     content: &'a str,
     pages: u32,

@@ -18,7 +18,7 @@ fn main() {
     // `block_on()` is basically scuffed `await`, since main can't be `async`
     let mut state = block_on(State::new(&window));
 
-    let mut batch: Batch;
+    let mut batch = Batch::new();
 
     // TODO Don't know what the fk clojures are RIP
     event_loop.run(move |event, _, control_flow| {
@@ -26,7 +26,7 @@ fn main() {
         match event {
             Event::RedrawRequested(_) => {
                 state.update();
-                match state.render(batch) {
+                match state.render(&batch) {
                     Ok(_) => {}
                     // Recreate swap chain if lost
                     // TODO how does the `SwapChain` even get "Lost"?
@@ -58,8 +58,8 @@ fn main() {
                         // `KeyboardInput` is a struct, so we have to use the struct matching syntax (remember `..` is syntax for autofill)
                         WindowEvent::CursorMoved { position, .. } => {
                             // Update batch
-                            batch.cursorPosition.0 = position.x;
-                            batch.cursorPosition.1 = position.y;
+                            batch.cursor_position.0 = position.x;
+                            batch.cursor_position.1 = position.y;
                         }
                         WindowEvent::KeyboardInput { input, .. } => {
                             // Match the attributes of the keypress
@@ -81,7 +81,7 @@ fn main() {
                                         }
                                         // If spacebar is pressed update batch
                                         Some(VirtualKeyCode::Space) => {
-                                            batch.spacePressed = !batch.spacePressed
+                                            batch.space_pressed = !batch.space_pressed
                                         }
                                         _ => (),
                                     }
@@ -106,16 +106,16 @@ fn main() {
 
 struct Batch {
     // 0 or 1
-    spacePressed: bool,
+    space_pressed: bool,
     // Cursor position
-    cursorPosition: (f64, f64),
+    cursor_position: (f64, f64),
 }
 
 impl Batch {
     fn new() -> Self {
         Batch {
-            spacePressed: false,
-            cursorPosition: (0.0, 0.0),
+            space_pressed: false,
+            cursor_position: (0.0, 0.0),
         }
     }
 }
@@ -131,6 +131,7 @@ struct State {
     swap_chain: wgpu::SwapChain,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
+    render_pipeline2: wgpu::RenderPipeline,
 }
 
 impl State {
@@ -194,7 +195,9 @@ impl State {
         // `wgpu::include_spirv!` differs from `wgpu::util::make_spirv` in that it takes in file name vs. `&str`
         // So we can directly include our `.spv` files
         let vs_module = device.create_shader_module(wgpu::include_spirv!("shader.vert.spv"));
+        let vs2_module = device.create_shader_module(wgpu::include_spirv!("shader2.vert.spv"));
         let fs_module = device.create_shader_module(wgpu::include_spirv!("shader.frag.spv"));
+        let fs2_module = device.create_shader_module(wgpu::include_spirv!("shader2.frag.spv"));
 
         // Pipeline layout describes a pipeline
         let render_pipeline_layout =
@@ -273,6 +276,75 @@ impl State {
             alpha_to_coverage_enabled: false,
         });
 
+        // Render pipline descriptor describes a render pipeline
+        let render_pipeline2 = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            // Label shows up in debuggin
+            label: Some("Render Pipeline"),
+            // TODO describes **bindings** for layout???
+            layout: Some(&render_pipeline_layout),
+            // `ProgrammableStageDescriptor` describes the stage of a rendering pipeline
+            vertex_stage: wgpu::ProgrammableStageDescriptor {
+                // Shader module is a compiled shader module on the gpu that defines the rendering stage
+                // In this case we're inputting the vertex shader
+                module: &vs2_module,
+                entry_point: "main",
+            },
+            // Fragment shader technically optional, so surrounded with `Some`
+            fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
+                // In this case we're inputting the fragment shader
+                module: &fs2_module,
+                entry_point: "main",
+            }),
+            // Rasterization process for the pipeline
+            // Describes how to process primitives before they are sent to the fragment shader
+            rasterization_state: Some(
+                // `RasterizationStateDescriptor` describes the state of rasterizer in render pipeline
+                // A rasterizer (aster for star, starshaped) basically turns a vector into pixels
+                wgpu::RasterizationStateDescriptor {
+                    // Counter clockwise or clockwise, depending on the coordinate system?
+                    // Vertices with counterclockwise order are considered the front face, used for right handed coordinate systems
+                    front_face: wgpu::FrontFace::Ccw,
+                    // Primitives that don't meet the criteria are culled, which is good because it speeds up rendering process for images that arent't seen anyway
+                    cull_mode: wgpu::CullMode::Back,
+                    depth_bias: 0,
+                    depth_bias_slope_scale: 0.0,
+                    depth_bias_clamp: 0.0,
+                    clamp_depth: false,
+                },
+            ),
+            // Describes how colors are stored and processed throughout the render pipeline
+            color_states: &[wgpu::ColorStateDescriptor {
+                // We put it to `swap_chain` format so it's easy to copy to it
+                format: sc_desc.format,
+                // Just replace previous pixels
+                color_blend: wgpu::BlendDescriptor::REPLACE,
+                // Apparently very complicated
+                alpha_blend: wgpu::BlendDescriptor::REPLACE,
+                // Enable writes to all color channels, rgba
+                write_mask: wgpu::ColorWrite::ALL,
+            }],
+            // Tell `wgpu` that we want to use a list of triangles for drawing
+            primitive_topology: wgpu::PrimitiveTopology::TriangleList,
+
+            // *** Apparently this entire section is basically buffers so...
+            depth_stencil_state: None,
+            //
+            vertex_state: wgpu::VertexStateDescriptor {
+                // Format of the index buffer to `u16`
+                index_format: wgpu::IndexFormat::Uint16,
+                //
+                vertex_buffers: &[],
+            },
+            // Anti aliasing stuff
+            // Samples calculated per pixel, this is MSAA, 1 is no multisampling
+            sample_count: 1,
+            // Use all samples in `sample_count` above
+            sample_mask: !0,
+            // Anti-aliasing
+            alpha_to_coverage_enabled: false,
+        });
+
+
         // We can return the struct that can be built using all of our variables
         Self {
             surface,
@@ -298,13 +370,13 @@ impl State {
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
     }
     // Checks if an event is fully complete, returns bool, if true, main won't process it any longer
-    fn input(&mut self, event: &WindowEvent) -> bool {
+    fn input(&mut self, _event: &WindowEvent) -> bool {
         false
     }
     // Nothing to update / "tick" for now
     fn update(&mut self) {}
     // Basically wgpu
-    fn render(&mut self, batch: Batch) -> Result<(), wgpu::SwapChainError> {
+    fn render(&mut self, batch: &Batch) -> Result<(), wgpu::SwapChainError> {
         // We need to get a frame to render to at first
         // Includes `wgpu::Texture` and `wgpu::Textureview` that holds the image that is being drawn
         // Remember the `?` operator here means return `Some(thing)` or return `Error`
@@ -335,9 +407,9 @@ impl State {
                         // Currently we're just clearing the colors
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             // Rgb based off of batch TROLL
-                            r: batch.cursorPosition.0,
-                            g: batch.cursorPosition.1,
-                            b: (batch.cursorPosition.0 + batch.cursorPosition.1) / 2.0,
+                            r: batch.cursor_position.0 % 4.0,
+                            g: batch.cursor_position.1 % 4.0,
+                            b: (batch.cursor_position.0 + batch.cursor_position.1) % 4.0,
                             a: 1.0,
                         }),
                         store: true,
@@ -349,7 +421,11 @@ impl State {
             });
 
             // Set render pipeline to the pipeline that we defined in `state`
-            render_pass.set_pipeline(&self.render_pipeline);
+            if batch.space_pressed {
+                render_pass.set_pipeline(&self.render_pipeline2);
+            } else {
+                render_pass.set_pipeline(&self.render_pipeline);
+            }
             // Draw triangle????
             render_pass.draw(0..4, 0..2);
         }
