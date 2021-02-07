@@ -18,7 +18,6 @@ fn main() {
     // Connect our wgpu state
     // `block_on()` is basically scuffed `await`, since main can't be `async`
     let mut state = block_on(State::new(&window));
-
     let mut batch = Batch::new();
 
     // TODO Don't know what the fk clojures are RIP
