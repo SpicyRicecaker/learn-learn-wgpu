@@ -198,7 +198,7 @@ struct State {
     swap_chain: wgpu::SwapChain,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
-    render_pipeline2: wgpu::RenderPipeline,
+    render_pipeline_2: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     num_vertices: u32,
 }
@@ -288,7 +288,6 @@ impl State {
                 push_constant_ranges: &[],
             });
 
-        // Render pipline descriptor describes a render pipeline
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             // Label shows up in debuggin
             label: Some("Render Pipeline"),
@@ -303,7 +302,7 @@ impl State {
                 // You could change the entry point here but make sure to rename the function in GLSL as well
                 entry_point: "main",
                 // The types of vertices that we want to pass to the vertex shader
-                buffers: &[],
+                buffers: &[Vertex::desc()],
             },
             // Fragment shader technically optional, so surrounded with `Some`
             // The shader itself stores color in the swap chain
@@ -351,72 +350,66 @@ impl State {
             },
         });
 
-        // Render pipline descriptor describes a render pipeline
-        let render_pipeline2 = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let render_pipeline_2 = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             // Label shows up in debuggin
             label: Some("Render Pipeline"),
             // TODO describes **bindings** for layout???
             layout: Some(&render_pipeline_layout),
-            // `ProgrammableStageDescriptor` describes the stage of a rendering pipeline
-            vertex_stage: wgpu::ProgrammableStageDescriptor {
+            // Specifies the compiled shader module to use for this state
+            vertex: wgpu::VertexState {
                 // Shader module is a compiled shader module on the gpu that defines the rendering stage
-                // In this case we're inputting the vertex shader
+                // In this case we're inputting the vertex shader that we compiled
                 module: &vs2_module,
+                // The entry point is the function that is called inside the GLSL shader.
+                // You could change the entry point here but make sure to rename the function in GLSL as well
                 entry_point: "main",
+                // The types of vertices that we want to pass to the vertex shader
+                buffers: &[],
             },
             // Fragment shader technically optional, so surrounded with `Some`
-            fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-                // In this case we're inputting the fragment shader
+            // The shader itself stores color in the swap chain
+            fragment: Some(wgpu::FragmentState {
+                // Inputting the fragment shader the we compiled earlier
                 module: &fs2_module,
                 entry_point: "main",
+                // Describes how colors are stored and processed throughout the render pipeline
+                targets: &[wgpu::ColorTargetState {
+                    // We set the format to the `swap_chain` format so it's easy to copy to it
+                    format: sc_desc.format,
+                    // Just replace previous pixels
+                    color_blend: wgpu::BlendState::REPLACE,
+                    // Replace transparency?
+                    alpha_blend: wgpu::BlendState::REPLACE,
+                    //  Enables all color channels (RGBA) to be written to
+                    write_mask: wgpu::ColorWrite::ALL,
+                }],
             }),
             // Rasterization process for the pipeline
             // Describes how to process primitives before they are sent to the fragment shader
-            rasterization_state: Some(
-                // `RasterizationStateDescriptor` describes the state of rasterizer in render pipeline
+            // /
+            // How to interpret vertices when converting them into triangles
+            primitive: wgpu::PrimitiveState {
                 // A rasterizer (aster for star, starshaped) basically turns a vector into pixels
-                wgpu::RasterizationStateDescriptor {
-                    // Counter clockwise or clockwise, depending on the coordinate system?
-                    // Vertices with counterclockwise order are considered the front face, used for right handed coordinate systems
-                    front_face: wgpu::FrontFace::Ccw,
-                    // Primitives that don't meet the criteria are culled, which is good because it speeds up rendering process for images that arent't seen anyway
-                    cull_mode: wgpu::CullMode::Back,
-                    depth_bias: 0,
-                    depth_bias_slope_scale: 0.0,
-                    depth_bias_clamp: 0.0,
-                    clamp_depth: false,
-                },
-            ),
-            // Describes how colors are stored and processed throughout the render pipeline
-            color_states: &[wgpu::ColorStateDescriptor {
-                // We put it to `swap_chain` format so it's easy to copy to it
-                format: sc_desc.format,
-                // Just replace previous pixels
-                color_blend: wgpu::BlendDescriptor::REPLACE,
-                // Apparently very complicated
-                alpha_blend: wgpu::BlendDescriptor::REPLACE,
-                // Enable writes to all color channels, rgba
-                write_mask: wgpu::ColorWrite::ALL,
-            }],
-            // Tell `wgpu` that we want to use a list of triangles for drawing
-            primitive_topology: wgpu::PrimitiveTopology::TriangleList,
-
-            // *** Apparently this entire section is basically buffers so...
-            depth_stencil_state: None,
-            //
-            vertex_state: wgpu::VertexStateDescriptor {
-                // Format of the index buffer to `u16`
-                index_format: wgpu::IndexFormat::Uint16,
                 //
-                vertex_buffers: &[Vertex::desc()],
+                // 3 vertices = 1 triangle
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                // Vertices with counterclockwise order are considered the front face, used for right handed coordinate systems
+                front_face: wgpu::FrontFace::Ccw,
+                // Primitives that don't meet the criteria are culled, which is good because it speeds up rendering process for images that arent't seen anyway
+                cull_mode: wgpu::CullMode::Back,
+                polygon_mode: wgpu::PolygonMode::Fill,
             },
-            // Anti aliasing stuff
-            // Samples calculated per pixel, this is MSAA, 1 is no multisampling
-            sample_count: 1,
-            // Use all samples in `sample_count` above
-            sample_mask: !0,
-            // Anti-aliasing
-            alpha_to_coverage_enabled: false,
+            // Depth / stencil buffer
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                // Samples calculated per pixel (MSAA)
+                count: 1,
+                // Enable all samples
+                mask: !0,
+                // Anti-aliasing
+                alpha_to_coverage_enabled: false,
+            },
         });
 
         let num_vertices = VERTICES.len() as u32;
@@ -432,7 +425,7 @@ impl State {
             render_pipeline,
             vertex_buffer,
             // TROLL
-            render_pipeline2,
+            render_pipeline_2,
             num_vertices,
         }
     }
@@ -500,19 +493,23 @@ impl State {
             });
 
             // Set render pipeline to the pipeline that we defined in `state`
-            if batch.space_pressed {
-                render_pass.set_pipeline(&self.render_pipeline2);
-            } else {
-                render_pass.set_pipeline(&self.render_pipeline);
-            }
+            // if batch.space_pressed {
+            //     render_pass.set_pipeline(&self.render_pipeline_2);
+            // } else {
+            //     render_pass.set_pipeline(&self.render_pipeline);
+            // }
+            render_pass.set_pipeline(&self.render_pipeline);
+
             // Assign portion of vertex buffer to a slot
             // calls to `draw` will then use this vertex buffer
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             // Draw based on the vertex buffer vertices obv
             render_pass.draw(0..self.num_vertices, 0..1);
         }
+        println!("hihihi");
         // Queue accepts anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));
+        println!("hihihi");
 
         Ok(())
     }

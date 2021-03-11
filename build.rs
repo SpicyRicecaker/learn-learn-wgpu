@@ -12,6 +12,7 @@ struct ShaderData {
 
 impl ShaderData {
     pub fn load(src_path: PathBuf) -> Result<Self> {
+        println!("2");
         // Try to get the extension of the file
         let extension = src_path
             // Takes in `PathBuf` and tries to return the extension of the file
