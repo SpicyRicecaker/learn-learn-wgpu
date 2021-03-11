@@ -10,18 +10,20 @@ edition = "2018"
 # Native windows!
 winit = "0.24.0"
 # Vulkan rust wrapper!
-wgpu = "0.6.2"
+wgpu = "0.7"
 # Promises and stuff
-futures = "0.3.8"
+futures = "0.3.13"
 # Casting plain data types
-bytemuck = { version = "1.4.1", features = ["derive"] }
+bytemuck = { version = "1.5.1", features = ["derive"] }
+# 
+env_logger = "0.8.3"
 
 # Build dependencies are dependencies that we need at compile time, but don't need at run time
 [build-dependencies]
 # We can use shaderc to compile our shader files into `SPIR-V` at compile time
-shaderc = "0.7"
+shaderc = "0.7.1"
 # Make error handling more idiomatic
-anyhow = "1.0.37"
+anyhow = "1.0.38"
 # Recursively move items around?
 fs_extra = "1.2.0"
 # You know, wildcard patterns and stuff

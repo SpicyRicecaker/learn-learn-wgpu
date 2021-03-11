@@ -9,6 +9,8 @@ use winit::{
 };
 
 fn main() {
+    // Logger for binaries that can be configured via environment variables
+    env_logger::init();
     // An event loop creates everything that's needed to make a new window
     // For example, on linux it creates X11 or wayland connection, can be different for other OS
     let event_loop = EventLoop::new();
@@ -216,7 +218,8 @@ impl State {
                 // This is creating a type (struct is a category of type) from the wgpu library
                 &wgpu::RequestAdapterOptions {
                     // Power preference default
-                    power_preference: wgpu::PowerPreference::Default,
+                    // ff//df
+                    power_preference: wgpu::PowerPreference::default(),
                     // Make sure that the GPU can actually display stuff on the surface that we made using the wgpu instance ealier
                     compatible_surface: Some(&surface),
                 },
@@ -231,10 +234,10 @@ impl State {
                     // `Features` field on `DeviceDescriptor` describes the features that we want
                     // The features themselves can be device-specific and thus not cross-platform, care
                     features: wgpu::Features::empty(),
-                    // Limits the type of resources that can be created??
+                    // Limitations of a certain device or adapter
                     limits: wgpu::Limits::default(),
-                    // Temporary field apparently
-                    shader_validation: true,
+                    // "Debug label for device"
+                    label: None,
                 },
                 None,
             )
@@ -243,8 +246,8 @@ impl State {
 
         // A swap chain descriptor describes the characteristics of a swap chain
         let sc_desc = wgpu::SwapChainDescriptor {
-            // How will the swap chain be used? (Only option is OUTPUT_ATTACHMENT), which outputs texture to the screen
-            usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+            // How will the swap chain be used? (Only option is RENDER_ATTACHMENT), which outputs texture to the screen
+            usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
             // How the textures are formatted in the swap chain
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
             // Width and height of the swap chain, which must match the width and height of the surface, (in this case a `window`)
@@ -268,10 +271,10 @@ impl State {
 
         // `wgpu::include_spirv!` differs from `wgpu::util::make_spirv` in that it takes in file name vs. `&str`
         // So we can directly include our `.spv` files
-        let vs_module = device.create_shader_module(wgpu::include_spirv!("shader.vert.spv"));
-        let vs2_module = device.create_shader_module(wgpu::include_spirv!("shader2.vert.spv"));
-        let fs_module = device.create_shader_module(wgpu::include_spirv!("shader.frag.spv"));
-        let fs2_module = device.create_shader_module(wgpu::include_spirv!("shader2.frag.spv"));
+        let vs_module = device.create_shader_module(&wgpu::include_spirv!("shader.vert.spv"));
+        let vs2_module = device.create_shader_module(&wgpu::include_spirv!("shader2.vert.spv"));
+        let fs_module = device.create_shader_module(&wgpu::include_spirv!("shader.frag.spv"));
+        let fs2_module = device.create_shader_module(&wgpu::include_spirv!("shader2.frag.spv"));
 
         // Pipeline layout describes a pipeline
         let render_pipeline_layout =
