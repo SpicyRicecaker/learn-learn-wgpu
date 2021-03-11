@@ -17,7 +17,7 @@ fn main() {
     // Creates a new window, taking in a reference to the event_loop
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-    // Connect our wgpu state
+    // Connect our wgpu state, the swapchain
     // `block_on()` is basically scuffed `await`, since main can't be `async`
     let mut state = block_on(State::new(&window));
     let mut batch = Batch::new();
@@ -36,9 +36,7 @@ fn main() {
                     // If system ran out of memory, only option is to exit program
                     Err(wgpu::SwapChainError::OutOfMemory) => *control_flow = ControlFlow::Exit,
                     // Otherwise print error
-                    Err(e) => {
-                        println!("SwapChainError: {:?}", e)
-                    }
+                    Err(e) => eprintln!("{:?}", e),
                 }
             }
             Event::MainEventsCleared => {
@@ -50,7 +48,7 @@ fn main() {
                 ref event,
                 window_id,
             } if window_id == window.id() => {
-                // Have the `state.input()` take precendence over the main loop
+                // Have `state` take precendence over the main loop, make sure we've processed everything
                 if !state.input(event) {
                     match event {
                         // In the case that the event is a close request,
@@ -91,7 +89,7 @@ fn main() {
                                 _ => (),
                             }
                         }
-                        // On resize event, call our implemented state function and pass in the new size
+                        // On resize event, call our function to create a new swapchain and pass in the new size
                         WindowEvent::Resized(physical_size) => state.resize(*physical_size),
                         // Scale factor changed could be changing display res, moving to new monitor, etc.
                         WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
@@ -136,27 +134,31 @@ struct Vertex {
 // unsafe impl bytemuck::Zeroable for Vertex {}
 
 impl Vertex {
-    fn desc<'a>() -> wgpu::VertexBufferDescriptor<'a> {
-        wgpu::VertexBufferDescriptor {
-            // How wide a vertex is, in this case we can literally pass in the size of vertex
+    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
+        // Descirbes how a buffer is layed out in memory;
+        // How to map buffer to the shader
+        wgpu::VertexBufferLayout {
+            // Describes how wide the vertex is
+            // in this case we can literally pass in the size of vertex that we defined in `Vertex`
             // `wgpu::BufferAddress` is internal type for buffer steps
-            stride: std::mem::size_of::<Vertex> as wgpu::BufferAddress,
-            // TODO How often the vertex buffer is stepped forward?
+            array_stride: std::mem::size_of::<Vertex> as wgpu::BufferAddress,
+            // Tells pipeline how often it should move to the next vertex
             step_mode: wgpu::InputStepMode::Vertex,
-            // Basically the fields of a Vertex struct here
-            // We can use the macro provided below to make it less verbose
-            // Though it requires `'static` lifetime, which we can't return from a func
+            // Describe the individual parts of the vertex, mirrors `Vertex` fields
             attributes: &[
                 // This describes vector position
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
+                    // Where the first attribute is
                     offset: 0,
-                    // Where we should store this attribute, `layout(location=0)`
+                    // Where we should store this attribute
+                    // layout(location=0) would be position
+                    // layout(location=1) would be color
                     shader_location: 0,
-                    // Format is same as defined in `Vertex`
+                    // Shape of the attribute, Float3 == Vec3
                     format: wgpu::VertexFormat::Float3,
                 },
                 // This describes vector color
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     // Offset by the vector position data as described above
                     offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     // Where we should store this attribute, `layout(location=1)`
@@ -248,9 +250,10 @@ impl State {
         let sc_desc = wgpu::SwapChainDescriptor {
             // How will the swap chain be used? (Only option is RENDER_ATTACHMENT), which outputs texture to the screen
             usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
-            // How the textures are formatted in the swap chain
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            // Width and height of the swap chain, which must match the width and height of the surface, (in this case a `window`)
+            // How the textures are formatted in the swap chain, different displays have different formats,
+            // we can call an adaptor func to get the right texture format
+            format: adapter.get_swap_chain_preferred_format(&surface),
+            // Width and height of the swap chain, which are the width and height of the surface, (in this case a `window`)
             width: size.width,
             height: size.height,
             // The mode that the swap chain will be presented in
@@ -262,7 +265,7 @@ impl State {
 
         // `device.create_buffer_init()` comes from `use wgpu::util::DeviceExt;`
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("vertex Buffer"),
+            label: Some("Vertex Buffer"),
             // Tries to cast `VERTICES` to `&[u8]`
             contents: bytemuck::cast_slice(VERTICES),
             // Usage of the buffer, in this case acting like a vertex buffer while drawing
@@ -291,66 +294,61 @@ impl State {
             label: Some("Render Pipeline"),
             // TODO describes **bindings** for layout???
             layout: Some(&render_pipeline_layout),
-            // `ProgrammableStageDescriptor` describes the stage of a rendering pipeline
-            vertex_stage: wgpu::ProgrammableStageDescriptor {
+            // Specifies the compiled shader module to use for this state
+            vertex: wgpu::VertexState {
                 // Shader module is a compiled shader module on the gpu that defines the rendering stage
-                // In this case we're inputting the vertex shader
+                // In this case we're inputting the vertex shader that we compiled
                 module: &vs_module,
+                // The entry point is the function that is called inside the GLSL shader.
+                // You could change the entry point here but make sure to rename the function in GLSL as well
                 entry_point: "main",
+                // The types of vertices that we want to pass to the vertex shader
+                buffers: &[],
             },
             // Fragment shader technically optional, so surrounded with `Some`
-            fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-                // In this case we're inputting the fragment shader
+            // The shader itself stores color in the swap chain
+            fragment: Some(wgpu::FragmentState {
+                // Inputting the fragment shader the we compiled earlier
                 module: &fs_module,
                 entry_point: "main",
+                // Describes how colors are stored and processed throughout the render pipeline
+                targets: &[wgpu::ColorTargetState {
+                    // We set the format to the `swap_chain` format so it's easy to copy to it
+                    format: sc_desc.format,
+                    // Just replace previous pixels
+                    color_blend: wgpu::BlendState::REPLACE,
+                    // Replace transparency?
+                    alpha_blend: wgpu::BlendState::REPLACE,
+                    //  Enables all color channels (RGBA) to be written to
+                    write_mask: wgpu::ColorWrite::ALL,
+                }],
             }),
             // Rasterization process for the pipeline
             // Describes how to process primitives before they are sent to the fragment shader
-            rasterization_state: Some(
-                // `RasterizationStateDescriptor` describes the state of rasterizer in render pipeline
+            // /
+            // How to interpret vertices when converting them into triangles
+            primitive: wgpu::PrimitiveState {
                 // A rasterizer (aster for star, starshaped) basically turns a vector into pixels
-                wgpu::RasterizationStateDescriptor {
-                    // Counter clockwise or clockwise, depending on the coordinate system?
-                    // Vertices with counterclockwise order are considered the front face, used for right handed coordinate systems
-                    front_face: wgpu::FrontFace::Ccw,
-                    // Primitives that don't meet the criteria are culled, which is good because it speeds up rendering process for images that arent't seen anyway
-                    cull_mode: wgpu::CullMode::Back,
-                    depth_bias: 0,
-                    depth_bias_slope_scale: 0.0,
-                    depth_bias_clamp: 0.0,
-                    clamp_depth: false,
-                },
-            ),
-            // Describes how colors are stored and processed throughout the render pipeline
-            color_states: &[wgpu::ColorStateDescriptor {
-                // We put it to `swap_chain` format so it's easy to copy to it
-                format: sc_desc.format,
-                // Just replace previous pixels
-                color_blend: wgpu::BlendDescriptor::REPLACE,
-                // Apparently very complicated
-                alpha_blend: wgpu::BlendDescriptor::REPLACE,
-                // Enable writes to all color channels, rgba
-                write_mask: wgpu::ColorWrite::ALL,
-            }],
-            // Tell `wgpu` that we want to use a list of triangles for drawing
-            primitive_topology: wgpu::PrimitiveTopology::TriangleList,
-
-            // *** Apparently this entire section is basically buffers so...
-            depth_stencil_state: None,
-            //
-            vertex_state: wgpu::VertexStateDescriptor {
-                // Format of the index buffer to `u16`
-                index_format: wgpu::IndexFormat::Uint16,
-                // Specify the vertex buffer that we described in `impl Vertex`
-                vertex_buffers: &[Vertex::desc()],
+                //
+                // 3 vertices = 1 triangle
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                // Vertices with counterclockwise order are considered the front face, used for right handed coordinate systems
+                front_face: wgpu::FrontFace::Ccw,
+                // Primitives that don't meet the criteria are culled, which is good because it speeds up rendering process for images that arent't seen anyway
+                cull_mode: wgpu::CullMode::Back,
+                polygon_mode: wgpu::PolygonMode::Fill,
             },
-            // Anti aliasing stuff
-            // Samples calculated per pixel, this is MSAA, 1 is no multisampling
-            sample_count: 1,
-            // Use all samples in `sample_count` above
-            sample_mask: !0,
-            // Anti-aliasing
-            alpha_to_coverage_enabled: false,
+            // Depth / stencil buffer
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                // Samples calculated per pixel (MSAA)
+                count: 1,
+                // Enable all samples
+                mask: !0,
+                // Anti-aliasing
+                alpha_to_coverage_enabled: false,
+            },
         });
 
         // Render pipline descriptor describes a render pipeline
@@ -441,7 +439,7 @@ impl State {
 
     // To allow window resizing, we need to recreate the swap chain with the new size
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        // Update size with new size
+        // Update current stored size with new size of resized window
         self.size = new_size;
         // Then update size of window in the swap chain descriptor
         self.sc_desc.width = new_size.width;
@@ -462,7 +460,7 @@ impl State {
         // Remember the `?` operator here means return `Some(thing)` or return `Error`
         let frame = self.swap_chain.get_current_frame()?.output;
         // Recall that the `device` is responsible for creating commands to be sent to the `queue` of the GPU
-        // `Encoder` builds a buffer that can be sent to GPU
+        // `encoder` builds this command buffer that is sent to GPU
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -474,6 +472,7 @@ impl State {
             // Create a render pass using the encoder
             // `RenderPassDescriptor` only has two fields, `color_attachments` and `depth_stencil_attachment`
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
                 // Describe where the color is going to be drawn to
                 color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
                     // Informs the texture to which the colors are going to be saved to
@@ -512,6 +511,7 @@ impl State {
             // Draw based on the vertex buffer vertices obv
             render_pass.draw(0..self.num_vertices, 0..1);
         }
+        // Queue accepts anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));
 
         Ok(())
