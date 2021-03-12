@@ -57,7 +57,7 @@ void main () {
   // The way that the data types are setup makes it easy to do matrix operations on them 
   // gl_Position = vec4(a_position, 1.0);
   // if(gl_VertexIndex == 2) {
-    gl_Position = vec4(a_position, 1.0);
+  gl_Position = vec4(a_position, 1.0);
   // } else {
     // gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
   // }

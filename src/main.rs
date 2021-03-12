@@ -1,5 +1,4 @@
 // Winit allows us to make windows
-use futures::executor::block_on;
 use wgpu::util::DeviceExt;
 use winit::{
     // Import all event types
@@ -16,6 +15,8 @@ fn main() {
     let event_loop = EventLoop::new();
     // Creates a new window, taking in a reference to the event_loop
     let window = WindowBuilder::new().build(&event_loop).unwrap();
+
+    use futures::executor::block_on;
 
     // Connect our wgpu state, the swapchain
     // `block_on()` is basically scuffed `await`, since main can't be `async`
@@ -141,7 +142,7 @@ impl Vertex {
             // Describes how wide the vertex is
             // in this case we can literally pass in the size of vertex that we defined in `Vertex`
             // `wgpu::BufferAddress` is internal type for buffer steps
-            array_stride: std::mem::size_of::<Vertex> as wgpu::BufferAddress,
+            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
             // Tells pipeline how often it should move to the next vertex
             step_mode: wgpu::InputStepMode::Vertex,
             // Describe the individual parts of the vertex, mirrors `Vertex` fields
@@ -263,15 +264,6 @@ impl State {
         // Represents the image or series of images that will be drawn onto a `Surface`
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
-        // `device.create_buffer_init()` comes from `use wgpu::util::DeviceExt;`
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            // Tries to cast `VERTICES` to `&[u8]`
-            contents: bytemuck::cast_slice(VERTICES),
-            // Usage of the buffer, in this case acting like a vertex buffer while drawing
-            usage: wgpu::BufferUsage::VERTEX,
-        });
-
         // `wgpu::include_spirv!` differs from `wgpu::util::make_spirv` in that it takes in file name vs. `&str`
         // So we can directly include our `.spv` files
         let vs_module = device.create_shader_module(&wgpu::include_spirv!("shader.vert.spv"));
@@ -303,7 +295,7 @@ impl State {
                 // You could change the entry point here but make sure to rename the function in GLSL as well
                 entry_point: "main",
                 // The types of vertices that we want to pass to the vertex shader
-                buffers: &[],
+                buffers: &[Vertex::desc()],
             },
             // Fragment shader technically optional, so surrounded with `Some`
             // The shader itself stores color in the swap chain
@@ -357,68 +349,71 @@ impl State {
             label: Some("Render Pipeline"),
             // TODO describes **bindings** for layout???
             layout: Some(&render_pipeline_layout),
-            // `ProgrammableStageDescriptor` describes the stage of a rendering pipeline
-            vertex_stage: wgpu::ProgrammableStageDescriptor {
+            // Specifies the compiled shader module to use for this state
+            vertex: wgpu::VertexState {
                 // Shader module is a compiled shader module on the gpu that defines the rendering stage
-                // In this case we're inputting the vertex shader
+                // In this case we're inputting the vertex shader that we compiled
                 module: &vs2_module,
+                // The entry point is the function that is called inside the GLSL shader.
+                // You could change the entry point here but make sure to rename the function in GLSL as well
                 entry_point: "main",
+                // The types of vertices that we want to pass to the vertex shader
+                buffers: &[Vertex::desc()],
             },
             // Fragment shader technically optional, so surrounded with `Some`
-            fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-                // In this case we're inputting the fragment shader
+            // The shader itself stores color in the swap chain
+            fragment: Some(wgpu::FragmentState {
+                // Inputting the fragment shader the we compiled earlier
                 module: &fs2_module,
                 entry_point: "main",
+                // Describes how colors are stored and processed throughout the render pipeline
+                targets: &[wgpu::ColorTargetState {
+                    // We set the format to the `swap_chain` format so it's easy to copy to it
+                    format: sc_desc.format,
+                    // Just replace previous pixels
+                    color_blend: wgpu::BlendState::REPLACE,
+                    // Replace transparency?
+                    alpha_blend: wgpu::BlendState::REPLACE,
+                    //  Enables all color channels (RGBA) to be written to
+                    write_mask: wgpu::ColorWrite::ALL,
+                }],
             }),
             // Rasterization process for the pipeline
             // Describes how to process primitives before they are sent to the fragment shader
-            rasterization_state: Some(
-                // `RasterizationStateDescriptor` describes the state of rasterizer in render pipeline
+            // /
+            // How to interpret vertices when converting them into triangles
+            primitive: wgpu::PrimitiveState {
                 // A rasterizer (aster for star, starshaped) basically turns a vector into pixels
-                wgpu::RasterizationStateDescriptor {
-                    // Counter clockwise or clockwise, depending on the coordinate system?
-                    // Vertices with counterclockwise order are considered the front face, used for right handed coordinate systems
-                    front_face: wgpu::FrontFace::Ccw,
-                    // Primitives that don't meet the criteria are culled, which is good because it speeds up rendering process for images that arent't seen anyway
-                    cull_mode: wgpu::CullMode::Back,
-                    depth_bias: 0,
-                    depth_bias_slope_scale: 0.0,
-                    depth_bias_clamp: 0.0,
-                    clamp_depth: false,
-                },
-            ),
-            // Describes how colors are stored and processed throughout the render pipeline
-            color_states: &[wgpu::ColorStateDescriptor {
-                // We put it to `swap_chain` format so it's easy to copy to it
-                format: sc_desc.format,
-                // Just replace previous pixels
-                color_blend: wgpu::BlendDescriptor::REPLACE,
-                // Apparently very complicated
-                alpha_blend: wgpu::BlendDescriptor::REPLACE,
-                // Enable writes to all color channels, rgba
-                write_mask: wgpu::ColorWrite::ALL,
-            }],
-            // Tell `wgpu` that we want to use a list of triangles for drawing
-            primitive_topology: wgpu::PrimitiveTopology::TriangleList,
-
-            // *** Apparently this entire section is basically buffers so...
-            depth_stencil_state: None,
-            //
-            vertex_state: wgpu::VertexStateDescriptor {
-                // Format of the index buffer to `u16`
-                index_format: wgpu::IndexFormat::Uint16,
                 //
-                vertex_buffers: &[Vertex::desc()],
+                // 3 vertices = 1 triangle
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                // Vertices with counterclockwise order are considered the front face, used for right handed coordinate systems
+                front_face: wgpu::FrontFace::Ccw,
+                // Primitives that don't meet the criteria are culled, which is good because it speeds up rendering process for images that arent't seen anyway
+                cull_mode: wgpu::CullMode::Back,
+                polygon_mode: wgpu::PolygonMode::Fill,
             },
-            // Anti aliasing stuff
-            // Samples calculated per pixel, this is MSAA, 1 is no multisampling
-            sample_count: 1,
-            // Use all samples in `sample_count` above
-            sample_mask: !0,
-            // Anti-aliasing
-            alpha_to_coverage_enabled: false,
+            // Depth / stencil buffer
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                // Samples calculated per pixel (MSAA)
+                count: 1,
+                // Enable all samples
+                mask: !0,
+                // Anti-aliasing
+                alpha_to_coverage_enabled: false,
+            },
         });
 
+        // `device.create_buffer_init()` comes from `use wgpu::util::DeviceExt;`
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            // Tries to cast `VERTICES` to `&[u8]`
+            contents: bytemuck::cast_slice(VERTICES),
+            // Usage of the buffer, in this case acting like a vertex buffer while drawing
+            usage: wgpu::BufferUsage::VERTEX,
+        });
         let num_vertices = VERTICES.len() as u32;
 
         // We can return the struct that can be built using all of our variables
