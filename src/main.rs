@@ -199,7 +199,7 @@ struct State {
     swap_chain: wgpu::SwapChain,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
-    render_pipeline2: wgpu::RenderPipeline,
+    render_pipeline_2: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     num_vertices: u32,
 }
@@ -280,7 +280,6 @@ impl State {
                 push_constant_ranges: &[],
             });
 
-        // Render pipline descriptor describes a render pipeline
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             // Label shows up in debuggin
             label: Some("Render Pipeline"),
@@ -343,8 +342,7 @@ impl State {
             },
         });
 
-        // Render pipline descriptor describes a render pipeline
-        let render_pipeline2 = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let render_pipeline_2 = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             // Label shows up in debuggin
             label: Some("Render Pipeline"),
             // TODO describes **bindings** for layout???
@@ -427,7 +425,7 @@ impl State {
             render_pipeline,
             vertex_buffer,
             // TROLL
-            render_pipeline2,
+            render_pipeline_2,
             num_vertices,
         }
     }
@@ -495,19 +493,23 @@ impl State {
             });
 
             // Set render pipeline to the pipeline that we defined in `state`
-            if batch.space_pressed {
-                render_pass.set_pipeline(&self.render_pipeline2);
-            } else {
-                render_pass.set_pipeline(&self.render_pipeline);
-            }
+            // if batch.space_pressed {
+            //     render_pass.set_pipeline(&self.render_pipeline_2);
+            // } else {
+            //     render_pass.set_pipeline(&self.render_pipeline);
+            // }
+            render_pass.set_pipeline(&self.render_pipeline);
+
             // Assign portion of vertex buffer to a slot
             // calls to `draw` will then use this vertex buffer
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             // Draw based on the vertex buffer vertices obv
             render_pass.draw(0..self.num_vertices, 0..1);
         }
+        println!("hihihi");
         // Queue accepts anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));
+        println!("hihihi");
 
         Ok(())
     }
